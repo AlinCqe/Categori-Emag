@@ -19,8 +19,9 @@ SCOPES = [
 ]
 creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
 client = gspread.authorize(creds)
-sheet = client.open("categori").sheet1
 
+
+sheet = client.open("categori").worksheet("Hoja 3")
 
 def get_db_data():
 
