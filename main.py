@@ -18,13 +18,7 @@ SCRAPING_HEADERS = {
     "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8",
     "accept-language": "ro-RO,ro;q=0.9,en-US;q=0.8,en;q=0.7",
     "accept-encoding": "gzip, deflate",
-    "upgrade-insecure-requests": "1",
-    "sec-fetch-site": "same-origin",
-    "sec-fetch-mode": "navigate",
-    "sec-fetch-dest": "document",
-    "sec-ch-ua": '"Google Chrome";v="137", "Chromium";v="137", "Not A Brand";v="24"',
-    "sec-ch-ua-mobile": "?0",
-    "sec-ch-ua-platform": '"Windows"',
+    
     "connection": "keep-alive",
 }
 
@@ -65,36 +59,41 @@ def get_item_page_html():
         return html
 
 
-def grab_categories_emag() -> list:
+def extract_categories():
 
-    all_categories_emag = []
+    data = curl_cffi.get("https://sapi.emag.ro/get-more-rupture-categories?source_id=7&filters%5Bpage_type%5D=brands&filters%5BhasFiltersSelected%5D=false&filters%5Bsubdepartment%5D%5B%5D=wearables-gadgeturi&filters%5Bdepartment%5D%5B%5D=laptop-tablete-telefoane&filters%5Bcategory%5D%5B%5D=2991&filters%5Bbrand%5D%5B%5D=739747&filters%5Bshop_id%5D=1",headers=SCRAPING_HEADERS).json()
 
-    html = get_item_page_html()
-    soup = BeautifulSoup(html, "html.parser")
-    categories = soup.find_all("div", class_="js-filter-letter-group")
+    results = []
 
-    for cat in categories:
-        cat_name = cat.find("div", class_="col-sm-12").select_one("h2 span").get_text(strip=True)
-        subcats = cat.find_all("div", class_="filter-item")
+    items = (
+        data
+        .get("data", {})
+        .get("recommended_categories", {})
+        .get("items", [])
+    )
 
-        for subcat in subcats:
-            subcat_name = subcat.find("div", class_="category-name").text
+    for cat in items:
 
-            a = subcat.select_one("a[href]")
-            link = a.get("href") if a else None
-            full_link = urljoin(base_emag_url, link)
 
-            all_categories_emag.append({"main_cat": cat_name, "subcat": subcat_name, "cat_link": full_link})
-            
-            #sheet.append_row([cat_name, subcat_name,full_link])  old append cats
-    
-    return all_categories_emag
+        main_cat = cat.get("name")
+
+        for subcat in cat.get("items", []):
+
+            results.append({
+                "main_cat": main_cat,
+                "subcat":  subcat.get("name"),
+                "cat_link": urljoin(base_emag_url, subcat.get("url", {}).get("path"))
+            })
+
+
+    return results
+
             
 def get_new_cats(sheet_data) -> list:
 
     new_categories = []
 
-    emag_cats = grab_categories_emag()
+    emag_cats = extract_categories()
 
     for cat in emag_cats:
         found = False
@@ -109,9 +108,9 @@ def get_new_cats(sheet_data) -> list:
 
 
 
-
+"""
 def grab_skus_new_cats(new_cats: list) -> list:
-    updated_new_cats = new_cats
+    updated_new_cats = list(new_cats)
 
     for index, cat in enumerate(new_cats):
 
@@ -165,36 +164,37 @@ def grab_skus_new_cats(new_cats: list) -> list:
             print("error", f"No SKUs found for link: {url}")
 
     return updated_new_cats
+"""
 
 
-
-def main():
+def write_new_categories():
     sheet_data = get_db_data()
     new_categories = get_new_cats(sheet_data)
 
-    updated_new_categories = grab_skus_new_cats(new_categories)
-    print("New cats", updated_new_categories)
-    for cat in updated_new_categories:
+
+    print("New cats", new_categories)
+    for cat in new_categories:
         print(cat)
 
-        if cat["skus"]:
 
-            prepared_row_data = [cat["main_cat"], cat["subcat"], cat["cat_link"]]
-            for sku in cat["skus"]:
-                prepared_row_data.append(sku)
 
-            sheet_data = get_db_data()
-            row_index = find_insert_row(rows=sheet_data, category=cat["main_cat"])
+        prepared_row_data = [cat["main_cat"], cat["subcat"], cat["cat_link"]]
 
-            start_col = 4
-            end_col = start_col + len(cat["skus"]) - 1
+        sheet_data = get_db_data()
+        row_index = find_insert_row(rows=sheet_data, category=cat["main_cat"])
 
-            sheet.insert_row(
-                prepared_row_data,
-                row_index
-            )
-            print(f"Inserted in row {row_index}: {prepared_row_data}")
-            time.sleep(2)
+        start_col = 4
+
+        sheet.insert_row(
+            prepared_row_data,
+            row_index
+        )
+        print(f"Inserted in row {row_index}: {prepared_row_data}")
+        time.sleep(2)
+
+
+
+write_new_categories()
 
 """            col_range = (
                 f"{col_index_to_letter(start_col)}{row_index}:"
@@ -209,10 +209,123 @@ def main():
 
 
 
-main()
+"""
 
-def grab_links():
-    pass
+def scrape_categories_skus(page, data: list) -> list:
+    bugged_links = []
+    scraped_categories_and_skus = []
+    for row in data:
+        
+        url = row["link"].strip().replace("c?ref=see_more_rupture", "sort-offer_iddesc")
+
+        try:
+            print(url)
+            page.goto(url)
+            
+            page.wait_for_load_state("networkidle")
+
+            html = page.content()
+        except Exception as e:
+            print(e)
+            bugged_links.append([{url}, "error:", {e}])
+            continue
+
+
+
+
+        soup = BeautifulSoup(html, 'html.parser')
+
+        if not soup.find("div", class_="js-products-container"):
+            print(f"Soft block or empty container at {url}")
+            continue
+
+        container = soup.find("div", class_="js-products-container")
+        if not container:
+
+            print("error", f"Products container not found at {url}. Stopping grab_links.")
+            bugged_links.append(["error", f"Products container not found at {url}. Stopping grab_links."])
+            return None
+
+
+        items = container.find_all("div", class_="card-item")
+        bulk_skus = []
+    
+        for item in items:
+
+            item_link = item.get("data-url", None)
+
+            if not item_link:
+                continue
+            
+            sku = grab_sku_from_link(page=page, url=item_link)
+            
+            if sku:
+                bulk_skus.append(sku)
+                bugged_links.append([item_link, "couldnt grab sku"])
+            time.sleep(random.randint(4, 7))
+
+        print("info", f"Scraped {len(bulk_skus)} bulk items from {url}")
+
+        time.sleep(3)
+
+        if bulk_skus:
+
+            scraped_categories_and_skus.append({"category": row["category"], "subcategory": row["subcategory"], "skus": bulk_skus})
+        else:
+            print("error", f"No SKUs found for link: {url}")
+    print(bugged_links)
+    return scraped_categories_and_skus
+        
+
+
+def write_new_skus():
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=False)
+        context = browser.new_context()
+        page = context.new_page()
+
+
+        sheet_data = get_db_data()
+        
+        scraped_categories_skus = scrape_categories_skus(page=page, data=sheet_data)
+        print(scraped_categories_skus)
+
+
+        browser.close()
+
+write_new_skus()
+
+"""
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
