@@ -41,9 +41,4 @@ def update_cell(row: int, column: int, text:str):
 
     sheet.update_cell(row, column, text)
 
-def col_index():
-    data=sheet.get_all_records()
-    headers = list(data[0].keys()) 
-    col_index = {name: idx + 1 for idx, name in enumerate(headers)}
-
 

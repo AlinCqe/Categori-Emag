@@ -1,32 +1,6 @@
 from bs4 import BeautifulSoup
 
 
-    
-
-
-def grab_sku_from_link(session: None, page: None, url):
-
-    if session:
-        try:
-            response = session.get(url)
-
-            soup = BeautifulSoup(response.text, 'html.parser')
-            sku = soup.find("div", class_="main-container-inner").find("main", class_="main-container").find("section", class_="page-section").find("div", class_="container").find("div", class_="justify-content-between").find("span", class_="product-code-display").text
-            return sku.replace("                    Cod produs: ", "").strip()
-        except:
-            return None
-        
-    if page:
-        try:
-            response = page.goto(url)
-            html = page.content()
-            soup = BeautifulSoup(html, 'html.parser')
-            sku = soup.find("div", class_="main-container-inner").find("main", class_="main-container").find("section", class_="page-section").find("div", class_="container").find("div", class_="justify-content-between").find("span", class_="product-code-display").text
-            return sku.replace("                    Cod produs: ", "").strip()
-        except error as e:
-            print(f"Error scraping SKU {url}: {e}")
-            return None
-
 
 def find_insert_row(rows, category):
     last_match = None
