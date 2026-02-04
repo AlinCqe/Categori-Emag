@@ -19,6 +19,39 @@ SCRAPING_HEADERS = {
 
 base_emag_url = "https://www.emag.ro"
 
+
+def get_initial_cats():
+
+    categories = []
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=False) 
+        page = browser.new_page()
+
+        page.goto("https://www.emag.ro/brands/brand/nextly?ref=grid")
+
+        buttons = page.locator(".category-item.fw-normal.hidden-xs")
+        
+        count = buttons.count()
+
+        for i in range(count):
+            btn = buttons.nth(i)
+            btn.click()
+            time.sleep(3)
+
+
+            breadcrumb = page.locator(".breadcrumb li")
+            third_text = breadcrumb.nth(2).text_content()
+            fifth_text = breadcrumb.nth(4).text_content()
+
+            fifth_link = breadcrumb.nth(4).locator("a").get_attribute("href")
+
+            categories.append({"main_cat": third_text, "subcat": fifth_text, "cat_link": fifth_link})
+    print(categories)
+    return categories
+
+
+
 def get_item_page_html():
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True) 
@@ -129,7 +162,11 @@ def write_new_categories():
     scraped_cats_html = extract_categories_html()
     scraped_cats_api = extract_categories_api()
 
+
     merged_scraped_data = merge_scraped_cats(scraped_cats_api, scraped_cats_html)
+    initial_cats = get_initial_cats()
+
+    merged_scraped_data = merge_scraped_cats(merged_scraped_data, initial_cats)
 
     sheet_data = get_db_data()
 
@@ -169,41 +206,6 @@ def write_new_categories():
 
 
 write_new_categories()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
